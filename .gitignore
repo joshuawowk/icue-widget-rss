@@ -1,0 +1,6 @@
+data/
+*.icuewidget
+.DS_Store
+node_modules/
+dist/
+tools/shots/

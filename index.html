@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>tr('RSS Reader')</title>
+  <link rel="icon" type="image/svg+xml" href="resources/icon.svg" />
+
+  <meta name="x-icue-restrictions" data-restrictions='[{ "device": "dashboard_lcd" }]' />
+  <meta name="x-icue-widget-group" content="tr('Productivity')" />
+
+  <script>
+    // FIRST script in the document. Any failure in a later <script> — including a
+    // parse-time SyntaxError that stops that block from running at all — gets
+    // painted onto the panel instead of leaving a silent spinner forever.
+    window.addEventListener('error', function (e) {
+      try {
+        var box = document.getElementById('icueCrash');
+        if (!box) {
+          box = document.createElement('pre');
+          box.id = 'icueCrash';
+          box.setAttribute('style', 'position:fixed;inset:0;z-index:9999;margin:0;padding:10px;' +
+            'overflow:auto;background:#15161c;color:#f87171;white-space:pre-wrap;' +
+            'font:11px/1.45 Consolas,Menlo,monospace;');
+          (document.body || document.documentElement).appendChild(box);
+        }
+        box.textContent += (e.message || 'Script error') +
+          '\n  at ' + (e.filename || '?').split('/').pop() + ':' + (e.lineno || 0) + '\n\n';
+      } catch (ignored) { void ignored; }
+    });
+  </script>
+
+  <!-- MediaViewer — inlined to avoid iCUE file:// script-loading restrictions -->
+  <style>
+  .position-container { position: absolute; transform-origin: top left; }
+  .scale-container { transform-origin: top left; }
+  .rotation-container { transform-origin: center center; }
+  .rotation-container img, .rotation-container video { display: block; object-fit: contain; }
+  </style>
+  <script>
+  class MediaViewer {
+    constructor(options = {}) {
+      this.container = options.container;
+      this.onMediaLoaded = options.onMediaLoaded || (() => {});
+      this.onMediaError = options.onMediaError || (() => {});
+      this.debug = options.debug || false;
+      this.positionContainer = null; this.scaleContainer = null; this.rotationContainer = null;
+      this.mediaElement = null; this.currentMediaPath = null;
+      this.supportedImageFormats = ["jpg","jpeg","png","gif","bmp","webp","svg","ico"];
+      this.supportedVideoFormats = ["mp4","webm","ogg","mov","avi","mkv"];
+      if (!this.container) throw new Error("MediaViewer: container is required");
+    }
+    getFileExtension(p) { return p.split(".").pop().toLowerCase(); }
+    isImageFile(e) { return this.supportedImageFormats.includes(e); }
+    isVideoFile(e) { return this.supportedVideoFormats.includes(e); }
+    log(...a) { if (this.debug) console.log("[MediaViewer]", ...a); }
+    warn(...a) { if (this.debug) console.warn("[MediaViewer]", ...a); }
+    error(...a) { console.error("[MediaViewer]", ...a); }
+    createImageElement(filePath) {
+      const img = document.createElement("img");
+      img.src = filePath;
+      img.onerror = () => { this.error("Failed to load image:", filePath); this.onMediaError(new Error("Failed to load image: " + filePath)); };
+      img.onload  = () => { this.log("Image loaded:", filePath); this.onMediaLoaded(img); };
+      return img;
+    }
+    createVideoElement(filePath) {
+      const video = document.createElement("video");
+      video.controls = false; video.autoplay = true; video.loop = true; video.muted = true; video.playsInline = true;
+      video.addEventListener("loadeddata", () => {
+        video.play().then(() => { this.onMediaLoaded(video); }).catch(e => { this.error("Error playing video:", e); this.onMediaError(e); });
+      });
+      video.addEventListener("error", e => { this.error("Video error:", e); this.onMediaError(new Error("Video error: " + (video.error?.message || "Unknown"))); });
+      video.src = filePath;
+      return video;
+    }
+    createMediaElement(filePath) {
+      const ext = this.getFileExtension(filePath);
+      if (this.isImageFile(ext)) return this.createImageElement(filePath);
+      if (this.isVideoFile(ext)) return this.createVideoElement(filePath);
+      this.error("Unsupported format:", ext); this.onMediaError(new Error("Unsupported format: " + ext)); return null;
+    }
+    createContainers() {
+      this.positionContainer = document.createElement("div"); this.positionContainer.className = "position-container";
+      this.scaleContainer    = document.createElement("div"); this.scaleContainer.className    = "scale-container";
+      this.rotationContainer = document.createElement("div"); this.rotationContainer.className = "rotation-container";
+      this.rotationContainer.appendChild(this.mediaElement);
+      this.scaleContainer.appendChild(this.rotationContainer);
+      this.positionContainer.appendChild(this.scaleContainer);
+      return this.positionContainer;
+    }
+    applyTransform(params = {}) {
+      if (!this.positionContainer) return;
+      const baseWidth = params.baseWidth || 100; const baseHeight = params.baseHeight || 100;
+      const scaleValue = params.scale !== undefined ? params.scale : 1;
+      const posX = params.positionX || 0; const posY = params.positionY || 0; const rotation = params.angle || 0;
+      const minScale = Math.min(this.container.clientWidth / baseWidth, this.container.clientHeight / baseHeight);
+      this.positionContainer.style.transform = `translate(${posX * minScale}px, ${posY * minScale}px)`;
+      this.scaleContainer.style.transform    = `scale(${scaleValue * minScale})`;
+      this.rotationContainer.style.transform = `rotate(${rotation}deg)`;
+    }
+    loadMedia(params = {}) {
+      const filePath = params.path; if (!filePath) { this.clear(); return; }
+      const decoded = decodeURIComponent(filePath);
+      if (this.currentMediaPath === decoded) { this.applyTransform(params); return; }
+      this.clear();
+      this.mediaElement = this.createMediaElement(decoded); if (!this.mediaElement) return;
+      this.container.appendChild(this.createContainers());
+      this.container.style.visibility = "visible";
+      this.applyTransform(params); this.currentMediaPath = decoded;
+    }
+    clear() {
+      this.container.innerHTML = ""; this.container.style.visibility = "hidden";
+      this.positionContainer = this.scaleContainer = this.rotationContainer = this.mediaElement = this.currentMediaPath = null;
+    }
+    destroy() { this.clear(); this.container = this.onMediaLoaded = this.onMediaError = null; }
+  }
+  </script>
+
+  <!-- Feeds -->
+  <meta name="x-icue-property" content="feedUrl1" data-label="tr('Feed URL 1')" data-type="textfield" data-default="'https://hackaday.com/feed/'" />
+  <meta name="x-icue-property" content="feedUrl2" data-label="tr('Feed URL 2')" data-type="textfield" data-default="'https://www.wired.com/feed/rss'" />
+  <meta name="x-icue-property" content="feedUrl3" data-label="tr('Feed URL 3')" data-type="textfield" data-default="''" />
+  <meta name="x-icue-property" content="feedUrl4" data-label="tr('Feed URL 4')" data-type="textfield" data-default="''" />
+  <meta name="x-icue-property" content="feedUrl5" data-label="tr('Feed URL 5')" data-type="textfield" data-default="''" />
+
+  <!-- Behaviour -->
+  <meta name="x-icue-property" content="widgetTitle" data-label="tr('Title (blank = feed name)')" data-type="textfield" data-default="''" />
+  <meta name="x-icue-property" content="mergeFeeds" data-label="tr('Feed Mode')" data-type="combobox" data-default="'tabs'"
+        data-values="[{'key':'tabs','value':tr('One feed at a time (tabs)')},{'key':'rotate','value':tr('Rotate feeds every 15 min')},{'key':'merge','value':tr('Merge all feeds by date')}]" />
+  <meta name="x-icue-property" content="showThumbnails" data-label="tr('Thumbnails')" data-type="combobox" data-default="'on'"
+        data-values="[{'key':'on','value':tr('Show thumbnails')},{'key':'off','value':tr('Text only')}]" />
+  <meta name="x-icue-property" content="maxItems" data-label="tr('Max Stories')" data-type="slider" data-default="15" data-min="3" data-max="40" data-step="1" />
+  <meta name="x-icue-property" content="refreshMinutes" data-label="tr('Refresh Interval')" data-type="slider" data-default="15" data-min="5" data-max="120" data-step="5" data-unit-label="'min'" />
+  <meta name="x-icue-property" content="customProxy" data-label="tr('Custom Proxy URL (optional)')" data-type="textfield" data-default="''" />
+
+  <!-- Widget Personalization -->
+  <meta name="x-icue-property" content="textColor" data-label="tr('Text Color')" data-type="color" data-default="'#ffffff'" />
+  <meta name="x-icue-property" content="accentColor" data-label="tr('Accent Color')" data-type="color" data-default="'#9f8fff'" />
+  <meta name="x-icue-property" content="backgroundColor" data-label="tr('Background Color')" data-type="color" data-default="'#15161c'" />
+  <meta name="x-icue-property" content="backgroundMedia" data-label="tr('Background Image')" data-type="media-selector" data-filters="['*.png','*.jpg','*.jpeg','*.webp']" />
+  <meta name="x-icue-property" content="glassBlur" data-label="tr('Glass Blur')" data-type="slider" data-default="0" data-min="0" data-max="30" data-step="1" />
+  <meta name="x-icue-property" content="transparency" data-label="tr('Background Transparency')" data-type="slider" data-default="100" data-min="0" data-max="100" data-step="1" data-unit-label="'%'" />
+
+  <script id="x-icue-groups" type="application/json">
+  [
+    { "title": "tr('Feeds')", "properties": ["feedUrl1", "feedUrl2", "feedUrl3", "feedUrl4", "feedUrl5"] },
+    { "title": "tr('RSS Reader')", "properties": ["widgetTitle", "mergeFeeds", "showThumbnails", "maxItems", "refreshMinutes", "customProxy"] },
+    { "title": "tr('Widget Personalization')", "properties": ["textColor", "accentColor", "backgroundColor", "backgroundMedia", "glassBlur", "transparency"] }
+  ]
+  </script>
+
+  <link rel="stylesheet" type="text/css" href="styles/RssReader.css" />
+</head>
+<body>
+  <div class="widget-root">
+    <div class="widget-background" aria-hidden="true">
+      <div class="main-glass"></div>
+      <div id="media-background"></div>
+    </div>
+
+    <div class="main-content">
+      <div class="loading-state state-panel">
+        <div class="spinner"></div>
+        <div class="state-text">Loading stories…</div>
+      </div>
+
+      <div class="error-state state-panel" style="display:none;">
+        <svg class="state-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2 1 21h22L12 2zm0 6c.6 0 1 .4 1 1v5a1 1 0 0 1-2 0V9c0-.6.4-1 1-1zm0 9.2a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4z"/></svg>
+        <div class="state-text error-text">Unable to load feed</div>
+        <div class="state-sub error-detail"></div>
+      </div>
+
+      <div class="setup-state state-panel" style="display:none;">
+        <svg class="state-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M6.2 19a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4zM4 4v3a12 12 0 0 1 12 12h3A15 15 0 0 0 4 4zm0 6.5V13a6 6 0 0 1 6 6h2.5A8.5 8.5 0 0 0 4 10.5z"/></svg>
+        <div class="state-text">Add a feed URL</div>
+        <div class="state-sub">Widget settings &rarr; Feeds &rarr; Feed URL 1</div>
+      </div>
+
+      <div class="empty-state state-panel" style="display:none;">
+        <svg class="state-icon ok" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1.2 14.4-4-4 1.4-1.4 2.6 2.6 5.6-5.6 1.4 1.4-7 7z"/></svg>
+        <div class="state-text">Nothing to read</div>
+        <div class="state-sub">This feed returned no stories</div>
+      </div>
+
+      <div class="content" style="display:none;">
+        <header class="topbar" id="topbar" role="button" tabindex="0" title="Switch feeds">
+          <div class="topbar-left">
+            <div class="title-row">
+              <span class="widget-title" id="widgetTitleEl">RSS</span>
+              <svg class="chevron" id="chevron" viewBox="0 0 24 24"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>
+              <span class="stale-dot" id="staleDot" style="display:none;" title="Showing cached stories"></span>
+            </div>
+            <div class="subtitle" id="subtitleEl"></div>
+          </div>
+          <div class="topbar-right">
+            <div class="story-count hero-value" id="storyCount">0</div>
+            <div class="story-count-label">stories</div>
+          </div>
+        </header>
+
+        <div class="filter-bar" id="filterBar" style="display:none;">
+          <div class="filter-group">
+            <span class="filter-label">Feeds</span>
+            <div class="filter-chips" id="feedChips"></div>
+          </div>
+          <!-- Which route actually answered, so a silently-proxied feed is visible. -->
+          <div class="filter-note" id="filterNote"></div>
+        </div>
+
+        <div class="story-list" id="storyList"></div>
+        <div class="overflow-hint" id="overflowHint" style="display:none;"></div>
+      </div>
+
+      <!-- Story detail overlay -->
+      <div class="detail-view" style="display:none;">
+        <header class="detail-header">
+          <button class="back-btn" id="backBtn" type="button">
+            <svg viewBox="0 0 24 24"><path fill="currentColor" d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg>
+            <span>Back</span>
+          </button>
+          <span class="detail-source" id="detailSource"></span>
+          <button class="open-btn" id="openBtn" type="button">
+            <svg viewBox="0 0 24 24"><path fill="currentColor" d="M14 3v2h3.6l-9.8 9.8 1.4 1.4L19 6.4V10h2V3h-7zM5 5h5V3H3v18h18v-7h-2v5H5V5z"/></svg>
+            <span>Open</span>
+          </button>
+        </header>
+        <div class="detail-scroll">
+          <div class="detail-hero hidden" id="detailHero"></div>
+          <div class="detail-title" id="detailTitle"></div>
+          <div class="detail-meta" id="detailMeta"></div>
+          <div class="detail-desc" id="detailDesc"></div>
+          <div class="detail-link" id="detailLink"></div>
+        </div>
+      </div>
+
+      <!-- Toast -->
+      <div class="toast" id="toast" style="display:none;">
+        <span class="toast-text" id="toastText"></span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // Everything lives inside an IIFE. iCUE injects each widget property as a
+  // global `let` binding, so ANY top-level declaration here sharing a property
+  // name (maxItems, customProxy, textColor, ...) would be a redeclaration
+  // SyntaxError that kills the whole script before it runs — which shows up as
+  // a widget stuck on its loading spinner. The IIFE makes that impossible.
+  (function () {
+    // iCUE injects a bootstrap that pre-declares `icueEvents` as a global LEXICAL
+    // binding (`let icueEvents = {onDataUpdated:null, onICUEInitialized:null,
+    // onUpdateRequested:null}`) and later reads `icueEvents.onICUEInitialized`
+    // off it. A BARE assignment from in here resolves up the scope chain to that
+    // binding, which is what registers our handlers.
+    //   * `window.icueEvents = {...}` does NOT work — a global `let` is not a
+    //     property of window, so that creates an unrelated object the bridge
+    //     never reads, and the widget sits on its loading state forever.
+    //   * `let`/`const`/`var icueEvents = {...}` does NOT work either — it is a
+    //     redeclaration SyntaxError that kills this whole <script> before it runs.
+    // Everything else stays inside this IIFE so that no declaration here can
+    // collide with the bootstrap's globals (uniqueId, iCUE_initialized, tick,
+    // tick_offset, tick_start, applyData, requestUpdate, pluginLinkprovider_initialized)
+    // or with the `let` iCUE declares for each x-icue-property.
+    function wireIcueEvents() {
+      icueEvents = {
+        'onDataUpdated': onIcueDataUpdated,
+        'onICUEInitialized': onIcueInitialized,
+        'onUpdateRequested': onUpdateRequested
+      };
+    }
+
+    let languageCode = 'en';
+
+    // Mirrors the data-default values on the x-icue-property tags above, so the
+    // widget behaves correctly before iCUE has injected its property globals
+    // (and when the page is opened directly for development).
+    const PROPERTY_DEFAULTS = {
+      feedUrl1: 'https://hackaday.com/feed/',
+      feedUrl2: 'https://www.wired.com/feed/rss',
+      feedUrl3: '',
+      feedUrl4: '',
+      feedUrl5: '',
+      widgetTitle: '',
+      mergeFeeds: 'tabs',
+      showThumbnails: 'on',
+      maxItems: 15,
+      refreshMinutes: 15,
+      customProxy: '',
+      textColor: '#ffffff',
+      accentColor: '#9f8fff',
+      backgroundColor: '#15161c',
+      glassBlur: 0,
+      transparency: 100
+    };
+
+    /* =========================================================
+       iCUE plumbing
+       ========================================================= */
+    function getIcueProperty(name, options) {
+      const allowEmpty = Boolean(options && options.allowEmpty);
+      if (typeof window !== 'undefined' && Object.prototype.hasOwnProperty.call(window, name)) {
+        const value = window[name];
+        if (value !== undefined && value !== null && (allowEmpty || value !== '')) return value;
+      }
+      try {
+        const value = Function('return typeof ' + name + ' !== "undefined" ? ' + name + ' : undefined')();
+        if (value !== undefined && value !== null && (allowEmpty || value !== '')) return value;
+      } catch (e) { void e; }
+      return Object.prototype.hasOwnProperty.call(PROPERTY_DEFAULTS, name) ? PROPERTY_DEFAULTS[name] : undefined;
+    }
+
+    function clampRange(v, min, max, d) {
+      v = Number(v);
+      if (!Number.isFinite(v)) return d;
+      return Math.max(min, Math.min(max, v));
+    }
+
+    function propString(name, fallback) {
+      const v = getIcueProperty(name, { allowEmpty: true });
+      return (typeof v === 'string' ? v : (v === undefined || v === null ? '' : String(v))).trim() || fallback;
+    }
+
+    /* ---------- Media background ---------- */
+    const mediaMount = document.getElementById('media-background');
+
+    function createMediaBackgroundComponent(container) {
+      if (!container) return { clear: function () {}, loadMedia: function () {} };
+      if (typeof MediaViewer === 'function') {
+        const viewer = new MediaViewer({
+          container: container,
+          onMediaLoaded: function () { container.classList.add('has-media'); },
+          onMediaError: function (err) {
+            container.classList.remove('has-media');
+            console.error('Media background error:', err);
+          }
+        });
+        return {
+          clear: function () { viewer.clear(); container.classList.remove('has-media'); },
+          loadMedia: function (config) { viewer.loadMedia(config); }
+        };
+      }
+      return {
+        clear: function () {
+          container.style.backgroundImage = '';
+          container.classList.remove('has-media');
+        },
+        loadMedia: function (config) {
+          const p = config && (config.path || config.pathToAsset);
+          if (!p) { this.clear(); return; }
+          container.style.backgroundImage = "url('" + p + "')";
+          container.style.backgroundRepeat = 'no-repeat';
+          container.style.backgroundPosition = 'center';
+          container.style.backgroundSize = 'cover';
+          container.classList.add('has-media');
+        }
+      };
+    }
+    const mediaBackgroundComponent = createMediaBackgroundComponent(mediaMount);
+    let lastAppliedMedia;
+
+    function applyStyles() {
+      const root = document.documentElement;
+      root.style.setProperty('--bg-opacity', clampRange(getIcueProperty('transparency'), 0, 100, 100) / 100);
+      const tc = getIcueProperty('textColor');
+      const ac = getIcueProperty('accentColor');
+      const bgc = getIcueProperty('backgroundColor');
+      root.style.setProperty('--text-color', (typeof tc === 'string' && tc) ? tc : '#ffffff');
+      root.style.setProperty('--accent-color', (typeof ac === 'string' && ac) ? ac : '#9f8fff');
+      root.style.setProperty('--bg-color', (typeof bgc === 'string' && bgc) ? bgc : '#15161c');
+      root.style.setProperty('--bg-blur', clampRange(getIcueProperty('glassBlur'), 0, 30, 0) + 'px');
+
+      const bgMedia = getIcueProperty('backgroundMedia');
+      const mediaKey = bgMedia ? JSON.stringify({
+        p: bgMedia.pathToAsset, s: bgMedia.scale, x: bgMedia.positionX, y: bgMedia.positionY, a: bgMedia.angle
+      }) : '';
+      if (mediaKey === lastAppliedMedia) return;
+      lastAppliedMedia = mediaKey;
+      if (!bgMedia) { mediaBackgroundComponent.clear(); return; }
+      mediaBackgroundComponent.loadMedia({
+        path: bgMedia.pathToAsset,
+        baseWidth: bgMedia.baseWidth,
+        baseHeight: bgMedia.baseHeight,
+        scale: bgMedia.scale,
+        positionX: bgMedia.positionX,
+        positionY: bgMedia.positionY,
+        angle: bgMedia.angle
+      });
+    }
+
+    let detailOpen = false;
+
+    function showState(state) {
+      ['loading-state', 'error-state', 'setup-state', 'empty-state', 'content', 'detail-view'].forEach(function (s) {
+        const el = document.querySelector('.' + s);
+        if (el) el.style.display = s === state ? '' : 'none';
+      });
+      detailOpen = state === 'detail-view';
+    }
+
+    /* =========================================================
+       Settings
+       ========================================================= */
+    const FEED_KEYS = ['feedUrl1', 'feedUrl2', 'feedUrl3', 'feedUrl4', 'feedUrl5'];
+    const FETCH_TIMEOUT_MS = 6000;
+    const ROTATE_MS = 15 * 60 * 1000;   // Feed Mode "Rotate" beat
+    const CACHE_KEY_PREFIX = 'jwowkRssReader:';
+
+    function maxStories() { return clampRange(getIcueProperty('maxItems'), 3, 40, 15); }
+    function refreshMs() { return clampRange(getIcueProperty('refreshMinutes'), 5, 120, 15) * 60 * 1000; }
+    function thumbsOn() { return propString('showThumbnails', 'on') !== 'off'; }
+    function feedMode() { return propString('mergeFeeds', 'tabs'); }
+    function mergeMode() { return feedMode() === 'merge'; }
+    function rotateMode() { return feedMode() === 'rotate'; }
+    function proxyTemplate() { return propString('customProxy', ''); }
+
+    function isHttpsUrl(u) {
+      try { return new URL(u).protocol === 'https:'; } catch (e) { return false; }
+    }
+
+    // A relay you host yourself normally answers on plain HTTP on the LAN.
+    // The widget page is file://, so there is no mixed-content rule to break —
+    // allow http only for addresses that cannot leave the local network.
+    function isPrivateHost(host) {
+      const h = String(host || '').toLowerCase();
+      if (!h) return false;
+      if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.lan') || h.endsWith('.home.arpa')) return true;
+      if (/^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h)) return true;
+      if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
+      if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(h)) return true; // CGNAT / Tailscale
+      return false;
+    }
+
+    function isUsableProxyUrl(u) {
+      try {
+        const url = new URL(u);
+        if (url.protocol === 'https:') return true;
+        return url.protocol === 'http:' && isPrivateHost(url.hostname);
+      } catch (e) { return false; }
+    }
+
+    // A feed slot accepts either "https://…" or "Display Name|https://…".
+    // The label wins over whatever title the feed reports, which is what you
+    // want for search-built feeds (BLOX/TownNews papers call themselves
+    // "www.example.com - RSS Results of type article").
+    function parseFeedEntry(raw) {
+      const s = String(raw || '').trim();
+      if (!s) return null;
+      let label = '';
+      let url = s;
+      const bar = s.indexOf('|');
+      if (bar !== -1) {
+        const head = s.slice(0, bar).trim();
+        const tail = s.slice(bar + 1).trim();
+        if (tail) { label = head; url = tail; }
+      }
+      if (!isHttpsUrl(url)) return null;
+      return { url: url, label: label };
+    }
+
+    function configuredFeeds() {
+      const feeds = [];
+      FEED_KEYS.forEach(function (key, i) {
+        const entry = parseFeedEntry(propString(key, ''));
+        if (entry) feeds.push({ index: i + 1, url: entry.url, label: entry.label });
+      });
+      return feeds;
+    }
+
+    function storageKey() {
+      const uid = (typeof uniqueId !== 'undefined' && uniqueId) ? uniqueId : 'dev';
+      return CACHE_KEY_PREFIX + uid;
+    }
+
+    /* =========================================================
+       Fetch routes
+
+       A browser widget can only read a feed the site lets it read.
+       Most feeds (Hackaday, most WordPress blogs) send no
+       Access-Control-Allow-Origin header, so a direct fetch is
+       blocked by CORS no matter which feed path you point at.
+       These routes are tried in order until one returns stories.
+       ========================================================= */
+    function applyCustomProxy(tpl, feedUrl) {
+      if (tpl.indexOf('{url}') !== -1) return tpl.replace('{url}', encodeURIComponent(feedUrl));
+      if (tpl.indexOf('{raw}') !== -1) return tpl.replace('{raw}', feedUrl);
+      if (tpl.indexOf('?') !== -1) return tpl + encodeURIComponent(feedUrl);
+      return tpl + feedUrl;
+    }
+
+    // Hackaday and a large share of the blog web run on WordPress, which
+    // exposes an official, CORS-enabled JSON API. When the feed URL looks
+    // like a WordPress feed we can read the posts first-party — no proxy.
+    function wordpressRoute(feedUrl, limit) {
+      let u;
+      try { u = new URL(feedUrl); } catch (e) { return null; }
+      if (u.protocol !== 'https:') return null;
+      const path = u.pathname.toLowerCase();
+      const looksLikeWpFeed = /\/feed\/?$/.test(path) || /(^|[?&])feed=/.test(u.search.toLowerCase());
+      if (!looksLikeWpFeed) return null;
+
+      let qs = 'number=' + limit;
+      const cat = path.match(/\/category\/([^/]+)\/feed\/?$/);
+      const tag = path.match(/\/tag\/([^/]+)\/feed\/?$/);
+      try {
+        if (cat) qs += '&category=' + encodeURIComponent(decodeURIComponent(cat[1]));
+        else if (tag) qs += '&tag=' + encodeURIComponent(decodeURIComponent(tag[1]));
+      } catch (e) { void e; }
+
+      return 'https://public-api.wordpress.com/rest/v1.1/sites/' +
+        encodeURIComponent(u.hostname) + '/posts/?' + qs +
+        '&fields=ID,title,URL,date,author,excerpt,featured_image,categories';
+    }
+
+    function buildRoutes(feedUrl) {
+      const enc = encodeURIComponent(feedUrl);
+      const limit = maxStories();
+      const routes = [{ name: 'direct', url: feedUrl, kind: 'xml' }];
+
+      // WordPress.com before the custom proxy on purpose: an RSS file carries
+      // whatever the site publishes (10 items on a stock WordPress), while the
+      // posts API returns as many as Max Stories asks for. A proxy in front of
+      // the same RSS file would quietly cap the widget at the feed's length.
+      const wp = wordpressRoute(feedUrl, limit);
+      if (wp) {
+        let host = '';
+        try { host = new URL(feedUrl).hostname; } catch (e) { void e; }
+        routes.push({ name: 'wordpress.com', url: wp, kind: 'wpcom', host: host });
+      }
+
+      const custom = proxyTemplate();
+      if (custom && isUsableProxyUrl(custom.replace('{url}', 'x').replace('{raw}', 'x'))) {
+        routes.push({ name: 'custom proxy', url: applyCustomProxy(custom, feedUrl), kind: 'auto' });
+      }
+
+      routes.push({ name: 'rss2json', url: 'https://api.rss2json.com/v1/api.json?rss_url=' + enc, kind: 'rss2json' });
+      routes.push({ name: 'allorigins/raw', url: 'https://api.allorigins.win/raw?url=' + enc, kind: 'xml' });
+      // feedrapp defaults to 4 entries and ignores anything past its own cap,
+      // so ask for the widget's story count explicitly.
+      routes.push({ name: 'feedrapp', url: 'https://feedrapp.info/?q=' + enc + '&num=' + limit, kind: 'feedrapp' });
+      routes.push({ name: 'codetabs', url: 'https://api.codetabs.com/v1/proxy?quest=' + enc, kind: 'xml' });
+      routes.push({ name: 'allorigins/get', url: 'https://api.allorigins.win/get?url=' + enc, kind: 'allorigins' });
+      return routes;
+    }
+
+    /* =========================================================
+       Parsing — every route is normalised to the same story shape:
+       { title, link, ts, author, summary, image, tags[], feedTitle }
+       ========================================================= */
+    const htmlDecoder = document.createElement('textarea');
+
+    function decodeEntities(s) {
+      if (!s) return '';
+      htmlDecoder.innerHTML = String(s);
+      return htmlDecoder.value;
+    }
+
+    function stripHtml(s) {
+      if (!s) return '';
+      const doc = new DOMParser().parseFromString(String(s), 'text/html');
+      return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+
+    // Bylines arrive in every shape: "mail@host (Name)" from WordPress,
+    // "By NAME <paper> Senior Staff Writer name@paper.com" from BLOX papers.
+    // Keep the person, drop the plumbing.
+    function tidyByline(raw, sourceName) {
+      let a = String(raw || '').replace(/\s+/g, ' ').trim();
+      if (!a) return '';
+      const wrapped = a.match(/^[^\s@]+@[^\s)]+\s*\((.+)\)$/);
+      if (wrapped) a = wrapped[1];
+      a = a.replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, ' ');
+      a = a.replace(/^by\s+/i, '').replace(/\s+/g, ' ').trim();
+      if (sourceName) {
+        const i = a.toLowerCase().indexOf(String(sourceName).toLowerCase());
+        if (i > 0) a = a.slice(0, i).trim();
+      }
+      return a.replace(/[,;|–-]\s*$/, '').trim();
+    }
+
+    function firstImgFromHtml(s) {
+      if (!s) return '';
+      const doc = new DOMParser().parseFromString(String(s), 'text/html');
+      const img = doc.querySelector('img[src]');
+      return img ? safeImage(img.getAttribute('src')) : '';
+    }
+
+    function safeImage(u) {
+      if (!u) return '';
+      let s = String(u).trim();
+      if (s.indexOf('http://') === 0) s = 'https://' + s.slice(7);
+      return isHttpsUrl(s) ? s : '';
+    }
+
+    function parseTs(value) {
+      if (!value) return 0;
+      let s = String(value).trim();
+      if (!s) return 0;
+      // rss2json emits "YYYY-MM-DD HH:MM:SS" in UTC with no zone marker.
+      if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) s = s.replace(' ', 'T') + 'Z';
+      const t = Date.parse(s);
+      return Number.isFinite(t) ? t : 0;
+    }
+
+    // Feeds pad excerpts with call-to-action boilerplate that reads badly on a
+    // small panel — trim the common tails.
+    function cleanSummary(s) {
+      let out = String(s || '').trim();
+      out = out.replace(/\s*\bThe post\b[\s\S]*?\bappeared first on\b[^.]*\.?\s*$/i, '');
+      const ctaTail = /\s*(?:\[?\u2026\]?|\[\.\.\.\]|\.{3})?\s*(?:continue reading|read (?:the )?(?:more|full (?:story|article)))\s*[\u2192\u00bb>]*\s*\.?$/i;
+      if (ctaTail.test(out)) out = out.replace(ctaTail, '').trim() + '\u2026';
+      out = out.replace(/\s*(?:\.{2,3}|\u2026)\s*$/, '\u2026');
+      return out.trim();
+    }
+
+    function makeStory(o) {
+      return {
+        title: (o.title || 'Untitled').trim(),
+        link: isHttpsUrl(o.link || '') ? o.link : (o.link && /^http:\/\//.test(o.link) ? 'https://' + o.link.slice(7) : ''),
+        ts: o.ts || 0,
+        author: (o.author || '').trim(),
+        summary: cleanSummary(o.summary),
+        image: safeImage(o.image),
+        tags: (o.tags || []).filter(Boolean).slice(0, 3),
+        feedTitle: (o.feedTitle || '').trim()
+      };
+    }
+
+    /* ---------- RSS 2.0 / Atom / RDF ---------- */
+    function parseXmlFeed(text) {
+      const xml = new DOMParser().parseFromString(text, 'application/xml');
+      if (xml.querySelector('parsererror')) throw new Error('not valid XML');
+
+      const chanTitle = xml.querySelector('channel > title, feed > title');
+      const feedTitle = chanTitle ? decodeEntities(chanTitle.textContent) : '';
+      const nodes = Array.from(xml.querySelectorAll('item, entry'));
+      if (!nodes.length) throw new Error('no items in feed');
+
+      const stories = nodes.map(function (n) {
+        const pick = function (sel) { const e = n.querySelector(sel); return e ? e.textContent : ''; };
+
+        let link = '';
+        const linkNodes = Array.from(n.querySelectorAll('link'));
+        for (const ln of linkNodes) {
+          const rel = (ln.getAttribute('rel') || '').toLowerCase();
+          if (rel && rel !== 'alternate') continue;
+          link = (ln.getAttribute('href') || ln.textContent || '').trim();
+          if (link) break;
+        }
+        if (!link) link = pick('guid').trim();
+
+        const contentEncoded = pick('encoded');
+        const rawSummary = pick('description') || pick('summary') || contentEncoded || pick('content');
+
+        // Media: media:thumbnail / media:content / enclosure, then inline <img>.
+        let image = '';
+        for (const el of Array.from(n.querySelectorAll('[url]'))) {
+          const tag = el.localName.toLowerCase();
+          const type = (el.getAttribute('type') || '').toLowerCase();
+          const medium = (el.getAttribute('medium') || '').toLowerCase();
+          const u = safeImage(el.getAttribute('url'));
+          if (!u) continue;
+          if (tag === 'thumbnail') { image = u; break; }
+          if (tag === 'content' && (medium === 'image' || type.indexOf('image/') === 0 || /\.(jpe?g|png|gif|webp)(\?|$)/i.test(u))) { image = u; break; }
+          if (tag === 'enclosure' && type.indexOf('image/') === 0) { image = u; break; }
+        }
+        if (!image) image = firstImgFromHtml(contentEncoded || rawSummary);
+
+        const tags = Array.from(n.querySelectorAll('category'))
+          .map(function (c) { return (c.getAttribute('term') || c.textContent || '').trim(); });
+
+        return makeStory({
+          title: decodeEntities(pick('title')),
+          link: link,
+          ts: parseTs(pick('pubDate') || pick('published') || pick('updated') || pick('date')),
+          author: stripHtml(pick('creator') || pick('author name') || pick('author')),
+          summary: stripHtml(rawSummary),
+          image: image,
+          tags: tags,
+          feedTitle: feedTitle
+        });
+      });
+
+      return { feedTitle: feedTitle, stories: stories };
+    }
+
+    /* ---------- WordPress.com REST v1.1 ---------- */
+    function parseWpCom(json) {
+      if (!json || !Array.isArray(json.posts)) throw new Error('unexpected WordPress response');
+      if (!json.posts.length) throw new Error('no posts');
+      const stories = json.posts.map(function (p) {
+        return makeStory({
+          title: decodeEntities(stripHtml(p.title)),
+          link: p.URL,
+          ts: parseTs(p.date),
+          author: p.author && (p.author.name || p.author.nice_name),
+          summary: stripHtml(p.excerpt),
+          image: p.featured_image,
+          tags: Object.keys(p.categories || {}),
+          feedTitle: ''
+        });
+      });
+      return { feedTitle: '', stories: stories };
+    }
+
+    /* ---------- rss2json ---------- */
+    function parseRss2Json(json) {
+      if (!json || json.status !== 'ok' || !Array.isArray(json.items)) {
+        throw new Error(json && json.message ? String(json.message).slice(0, 80) : 'rss2json rejected the feed');
+      }
+      if (!json.items.length) throw new Error('no items');
+      const feedTitle = (json.feed && json.feed.title) || '';
+      const stories = json.items.map(function (it) {
+        return makeStory({
+          title: decodeEntities(it.title),
+          link: it.link,
+          ts: parseTs(it.pubDate),
+          author: it.author,
+          summary: stripHtml(it.description || it.content),
+          image: it.thumbnail || (it.enclosure && it.enclosure.link) || firstImgFromHtml(it.description || it.content),
+          tags: it.categories || [],
+          feedTitle: feedTitle
+        });
+      });
+      return { feedTitle: feedTitle, stories: stories };
+    }
+
+    /* ---------- feedrapp (Google Feed API shape) ---------- */
+    function parseFeedrapp(json) {
+      const feed = json && json.responseData && json.responseData.feed;
+      if (!feed || !Array.isArray(feed.entries)) throw new Error('unexpected feedrapp response');
+      if (!feed.entries.length) throw new Error('no entries');
+      const stories = feed.entries.map(function (e) {
+        return makeStory({
+          title: decodeEntities(e.title),
+          link: e.link,
+          ts: parseTs(e.publishedDate),
+          author: e.author,
+          summary: stripHtml(e.contentSnippet || e.content),
+          image: e.thumbnail || firstImgFromHtml(e.content),
+          tags: e.categories || [],
+          feedTitle: feed.title || ''
+        });
+      });
+      return { feedTitle: feed.title || '', stories: stories };
+    }
+
+    /* ---------- dispatch ---------- */
+    function parseByKind(text, kind) {
+      if (kind === 'xml') return parseXmlFeed(text);
+
+      let json = null;
+      const trimmed = text.replace(/^﻿/, '').trimStart();
+      if (kind !== 'auto' || trimmed.charAt(0) !== '<') {
+        try { json = JSON.parse(text); } catch (e) {
+          if (kind === 'auto') return parseXmlFeed(text);
+          throw new Error('response was not JSON');
+        }
+      }
+
+      if (kind === 'allorigins' || (kind === 'auto' && json && typeof json.contents === 'string')) {
+        if (json.status && json.status.http_code >= 400) throw new Error('upstream HTTP ' + json.status.http_code);
+        return parseXmlFeed(json.contents || '');
+      }
+      if (kind === 'wpcom' || (kind === 'auto' && json && Array.isArray(json.posts))) return parseWpCom(json);
+      if (kind === 'rss2json' || (kind === 'auto' && json && Array.isArray(json.items))) return parseRss2Json(json);
+      if (kind === 'feedrapp' || (kind === 'auto' && json && json.responseData)) return parseFeedrapp(json);
+      return parseXmlFeed(text);
+    }
+
+    // The WordPress posts endpoint carries no site title, so look the display
+    // name up once per host and reuse it for the rest of the session.
+    const wpSiteNames = {};
+    async function wpSiteName(host) {
+      if (!host) return '';
+      if (Object.prototype.hasOwnProperty.call(wpSiteNames, host)) return wpSiteNames[host];
+      wpSiteNames[host] = '';
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(function () { controller.abort(); }, 4000);
+        const res = await fetch('https://public-api.wordpress.com/rest/v1.1/sites/' +
+          encodeURIComponent(host) + '?fields=name', { signal: controller.signal });
+        clearTimeout(timer);
+        if (res.ok) {
+          const json = await res.json();
+          if (json && typeof json.name === 'string') wpSiteNames[host] = json.name.trim();
+        }
+      } catch (e) { void e; }
+      return wpSiteNames[host];
+    }
+
+    async function fetchViaRoutes(feedUrl) {
+      const routes = buildRoutes(feedUrl);
+      const problems = [];
+      for (const route of routes) {
+        const controller = new AbortController();
+        const timer = setTimeout(function () { controller.abort(); }, FETCH_TIMEOUT_MS);
+        try {
+          const res = await fetch(route.url, {
+            cache: 'default',
+            headers: { Accept: 'application/rss+xml, application/atom+xml, application/xml, application/json, text/xml, */*' },
+            signal: controller.signal
+          });
+          clearTimeout(timer);
+          if (!res.ok) { problems.push(route.name + ': HTTP ' + res.status); continue; }
+          const text = await res.text();
+          const parsed = parseByKind(text, route.kind);
+          if (!parsed.stories.length) { problems.push(route.name + ': empty'); continue; }
+          if (route.kind === 'wpcom' && !parsed.feedTitle) {
+            parsed.feedTitle = await wpSiteName(route.host);
+          }
+          parsed.via = route.name;
+          // Remember what was tried and failed on the way here — a feed quietly
+          // demoted to a public relay looks identical to a healthy one.
+          parsed.problems = problems.slice();
+          return parsed;
+        } catch (err) {
+          clearTimeout(timer);
+          const label = err && err.name === 'AbortError' ? 'timed out'
+            : (err && err.message ? err.message : 'network error');
+          problems.push(route.name + ': ' + label);
+        }
+      }
+      const e = new Error(problems.join(' | '));
+      e.routeProblems = problems;
+      throw e;
+    }
+
+    /* =========================================================
+       State + cache
+       ========================================================= */
+    let feedData = {};        // index -> { feedTitle, stories, via, fetchedAt, error }
+    let activeFeed = 0;       // 0 = first configured feed
+    let filterOpen = false;
+    let currentStory = null;
+    let refreshTimer = null;
+    let rotateTimer = null;
+    let fetchInFlight = false;
+    let lastConfigKey = '';
+    let toastTimer = null;
+
+    const els = {
+      title: document.getElementById('widgetTitleEl'),
+      subtitle: document.getElementById('subtitleEl'),
+      count: document.getElementById('storyCount'),
+      chevron: document.getElementById('chevron'),
+      staleDot: document.getElementById('staleDot'),
+      filterBar: document.getElementById('filterBar'),
+      feedChips: document.getElementById('feedChips'),
+      filterNote: document.getElementById('filterNote'),
+      list: document.getElementById('storyList'),
+      overflow: document.getElementById('overflowHint'),
+      errorDetail: document.querySelector('.error-detail'),
+      detailHero: document.getElementById('detailHero'),
+      detailTitle: document.getElementById('detailTitle'),
+      detailMeta: document.getElementById('detailMeta'),
+      detailDesc: document.getElementById('detailDesc'),
+      detailLink: document.getElementById('detailLink'),
+      detailSource: document.getElementById('detailSource'),
+      toast: document.getElementById('toast'),
+      toastText: document.getElementById('toastText')
+    };
+
+    function hostLabel(url) {
+      try { return new URL(url).hostname.replace(/^www\./, ''); } catch (e) { return 'Feed'; }
+    }
+
+    function saveCache() {
+      try {
+        const slim = {};
+        Object.keys(feedData).forEach(function (k) {
+          const d = feedData[k];
+          if (!d || !d.stories || !d.stories.length) return;
+          slim[k] = { feedTitle: d.feedTitle, via: d.via, problems: d.problems || [], fetchedAt: d.fetchedAt, stories: d.stories.slice(0, 40) };
+        });
+        localStorage.setItem(storageKey(), JSON.stringify({ v: 1, urls: configuredFeeds(), data: slim }));
+      } catch (e) { void e; }
+    }
+
+    function loadCache() {
+      try {
+        const raw = localStorage.getItem(storageKey());
+        if (!raw) return false;
+        const parsed = JSON.parse(raw);
+        if (!parsed || parsed.v !== 1 || !parsed.data) return false;
+        const live = configuredFeeds().map(function (f) { return f.index + '|' + f.url; }).join(',');
+        const cached = (parsed.urls || []).map(function (f) { return f.index + '|' + f.url; }).join(',');
+        if (live !== cached) return false;
+        feedData = {};
+        Object.keys(parsed.data).forEach(function (k) {
+          const d = parsed.data[k];
+          feedData[k] = { feedTitle: d.feedTitle, via: d.via, problems: d.problems || [], fetchedAt: d.fetchedAt, stories: d.stories || [], error: '' };
+        });
+        return Object.keys(feedData).length > 0;
+      } catch (e) { return false; }
+    }
+
+    /* =========================================================
+       Rendering
+       ========================================================= */
+    function relativeTime(ts) {
+      if (!ts) return { text: '', cls: 'time-old' };
+      const diff = Date.now() - ts;
+      const min = Math.round(diff / 60000);
+      if (diff < 0) return { text: 'just now', cls: 'time-fresh' };
+      if (min < 1) return { text: 'just now', cls: 'time-fresh' };
+      if (min < 60) return { text: min + 'm ago', cls: 'time-fresh' };
+      const hr = Math.round(min / 60);
+      if (hr < 24) return { text: hr + 'h ago', cls: hr <= 6 ? 'time-fresh' : 'time-today' };
+      const day = Math.round(hr / 24);
+      if (day < 7) return { text: day + 'd ago', cls: 'time-recent' };
+      return {
+        text: new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        cls: 'time-old'
+      };
+    }
+
+    function visibleStories() {
+      const feeds = configuredFeeds();
+      if (!feeds.length) return [];
+      if (mergeMode()) {
+        const all = [];
+        feeds.forEach(function (f) {
+          const d = feedData[f.index];
+          if (d && d.stories) d.stories.forEach(function (s) { all.push(s); });
+        });
+        all.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+        return all.slice(0, maxStories());
+      }
+      const feed = feeds[Math.min(activeFeed, feeds.length - 1)];
+      const d = feed && feedData[feed.index];
+      return d && d.stories ? d.stories.slice(0, maxStories()) : [];
+    }
+
+    function currentFeedMeta() {
+      const feeds = configuredFeeds();
+      if (!feeds.length) return null;
+      if (mergeMode()) return { title: 'All feeds', url: '', data: null, feed: null };
+      const feed = feeds[Math.min(activeFeed, feeds.length - 1)];
+      const d = feedData[feed.index];
+      return { title: feed.label || (d && d.feedTitle) || hostLabel(feed.url), url: feed.url, data: d, feed: feed };
+    }
+
+    // Which route answered, and when. A feed served by a public relay looks
+    // identical to a direct one until it stops working, so say it out loud.
+    function routeNote(feeds, meta) {
+      if (mergeMode()) {
+        const vias = feeds.map(function (f) {
+          const d = feedData[f.index];
+          return d && d.via ? d.via : '';
+        }).filter(Boolean);
+        return vias.length ? 'via ' + vias.join(', ') : '';
+      }
+      const d = meta && meta.data;
+      if (!d || !d.via) return '';
+      const when = relativeTime(d.fetchedAt).text;
+      let note = 'via ' + d.via + (when ? ' • ' + when : '');
+
+      // If a proxy is configured but something else served the feed, say why:
+      // either the proxy was tried and failed, or the URL was rejected outright.
+      const proxy = proxyTemplate();
+      if (proxy && d.via !== 'custom proxy') {
+        const tried = (d.problems || []).filter(function (p) { return p.indexOf('custom proxy') === 0; })[0];
+        if (tried) note += ' • ' + tried;
+        else if (!isUsableProxyUrl(proxy.replace('{url}', 'x').replace('{raw}', 'x'))) {
+          note += ' • proxy URL rejected (https, or http on a LAN address)';
+        }
+      }
+      return note + (d.error ? ' • last refresh failed' : '');
+    }
+
+    function renderChips() {
+      const feeds = configuredFeeds();
+      els.feedChips.textContent = '';
+      feeds.forEach(function (f, i) {
+        const d = feedData[f.index];
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'filter-chip' + ((!mergeMode() && i === Math.min(activeFeed, feeds.length - 1)) ? ' on' : '');
+        if (d && d.error && (!d.stories || !d.stories.length)) chip.classList.add('err');
+        const dot = document.createElement('span');
+        dot.className = 'chip-dot';
+        chip.appendChild(dot);
+        const label = document.createElement('span');
+        label.textContent = f.label || (d && d.feedTitle) || hostLabel(f.url);
+        chip.appendChild(label);
+        chip.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          activeFeed = i;
+          scheduleRotation();   // a manual pick restarts the 15-minute beat
+          renderAll();
+        });
+        els.feedChips.appendChild(chip);
+      });
+    }
+
+    function renderStoryRow(story) {
+      const row = document.createElement('div');
+      row.className = 'story-row';
+
+      if (thumbsOn()) {
+        const thumb = document.createElement('div');
+        thumb.className = 'story-thumb placeholder';
+        // Start on the placeholder and only swap in the artwork once it has
+        // actually decoded — feeds routinely carry dead or hotlink-blocked images.
+        if (story.image) {
+          const probe = new Image();
+          probe.onload = function () {
+            thumb.style.backgroundImage = "url('" + story.image.replace(/'/g, '%27') + "')";
+            thumb.classList.remove('placeholder');
+          };
+          probe.src = story.image;
+        }
+        row.appendChild(thumb);
+      }
+
+      const main = document.createElement('div');
+      main.className = 'story-main';
+
+      const title = document.createElement('div');
+      title.className = 'story-title';
+      title.textContent = story.title;
+      main.appendChild(title);
+
+      const meta = document.createElement('div');
+      meta.className = 'story-meta';
+      const rel = relativeTime(story.ts);
+      if (rel.text) {
+        const chip = document.createElement('span');
+        chip.className = 'time-chip ' + rel.cls;
+        chip.textContent = rel.text;
+        meta.appendChild(chip);
+      }
+      const src = document.createElement('span');
+      src.className = 'story-source';
+      src.textContent = story.author || story.feedTitle || '';
+      if (src.textContent) meta.appendChild(src);
+      main.appendChild(meta);
+
+      row.appendChild(main);
+      row.addEventListener('click', function () { openDetail(story); });
+      return row;
+    }
+
+    function renderAll() {
+      const feeds = configuredFeeds();
+      if (!feeds.length) { showState('setup-state'); return; }
+
+      const meta = currentFeedMeta();
+      const stories = visibleStories();
+      const known = Object.keys(feedData).some(function (k) {
+        return feedData[k] && feedData[k].stories && feedData[k].stories.length;
+      });
+
+      if (!known) {
+        const firstError = feeds.map(function (f) { return feedData[f.index] && feedData[f.index].error; })
+          .filter(Boolean)[0];
+        if (firstError) {
+          els.errorDetail.textContent = String(firstError).slice(0, 220);
+          showState('error-state');
+        } else {
+          showState('loading-state');
+        }
+        return;
+      }
+
+      const customTitle = propString('widgetTitle', '');
+      els.title.textContent = customTitle || (meta ? meta.title : 'RSS');
+      const d = meta && meta.data;
+      const stale = d && d.fetchedAt && (Date.now() - d.fetchedAt) > refreshMs() * 2;
+      els.staleDot.style.display = (stale || (d && d.error)) ? '' : 'none';
+      els.subtitle.textContent = mergeMode()
+        ? feeds.length + ' feeds'
+        : (meta && meta.url ? hostLabel(meta.url) : '');
+      els.count.textContent = String(stories.length);
+      els.chevron.classList.toggle('open', filterOpen);
+      els.chevron.classList.toggle('active', feeds.length > 1);
+      els.filterBar.style.display = filterOpen && feeds.length > 1 ? '' : 'none';
+      els.filterNote.textContent = routeNote(feeds, meta);
+
+      renderChips();
+
+      els.list.textContent = '';
+      if (!stories.length) { showState('empty-state'); return; }
+      stories.forEach(function (s) { els.list.appendChild(renderStoryRow(s)); });
+
+      const total = mergeMode()
+        ? feeds.reduce(function (n, f) { return n + ((feedData[f.index] && feedData[f.index].stories) || []).length; }, 0)
+        : ((d && d.stories) || []).length;
+      if (total > stories.length) {
+        els.overflow.textContent = '+' + (total - stories.length) + ' more';
+        els.overflow.style.display = '';
+      } else {
+        els.overflow.style.display = 'none';
+      }
+
+      if (!detailOpen) showState('content');
+    }
+
+    /* ---------- Detail ---------- */
+    function openDetail(story) {
+      currentStory = story;
+      els.detailHero.classList.add('hidden');
+      if (story.image) {
+        const heroProbe = new Image();
+        heroProbe.onload = function () {
+          if (currentStory !== story) return;
+          els.detailHero.style.backgroundImage = "url('" + story.image.replace(/'/g, '%27') + "')";
+          els.detailHero.classList.remove('hidden');
+        };
+        heroProbe.src = story.image;
+      }
+      els.detailTitle.textContent = story.title;
+      els.detailSource.textContent = story.feedTitle || (story.link ? hostLabel(story.link) : '');
+
+      els.detailMeta.textContent = '';
+      const rel = relativeTime(story.ts);
+      if (rel.text) {
+        const t = document.createElement('span');
+        t.className = 'time-chip ' + rel.cls;
+        t.textContent = rel.text;
+        els.detailMeta.appendChild(t);
+      }
+      if (story.author) {
+        const a = document.createElement('span');
+        a.className = 'author-badge';
+        a.textContent = story.author;
+        els.detailMeta.appendChild(a);
+      }
+      (story.tags || []).forEach(function (tag) {
+        const b = document.createElement('span');
+        b.className = 'tag-badge';
+        b.textContent = tag;
+        els.detailMeta.appendChild(b);
+      });
+
+      els.detailDesc.textContent = story.summary || '';
+      els.detailLink.textContent = story.link || '';
+      showState('detail-view');
+    }
+
+    function openStoryLink(url) {
+      if (!url) return;
+      if (window.plugins && window.plugins.Linkprovider && typeof window.plugins.Linkprovider.open === 'function') {
+        window.plugins.Linkprovider.open(url);
+        showToast('Opening in your browser…');
+        return;
+      }
+      window.open(url, '_blank', 'noopener');
+    }
+
+    function showToast(text) {
+      els.toastText.textContent = text;
+      els.toast.style.display = '';
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { els.toast.style.display = 'none'; }, 2500);
+    }
+
+    document.getElementById('topbar').addEventListener('click', function () {
+      if (configuredFeeds().length < 2) return;
+      filterOpen = !filterOpen;
+      renderAll();
+    });
+    document.getElementById('backBtn').addEventListener('click', function () {
+      currentStory = null;
+      showState('content');
+      renderAll();
+    });
+    document.getElementById('openBtn').addEventListener('click', function () {
+      if (currentStory) openStoryLink(currentStory.link);
+    });
+
+    /* =========================================================
+       Loading
+       ========================================================= */
+    // Belt and braces: if nothing has resolved long after every per-route
+    // timeout should have fired, surface that instead of spinning forever.
+    let watchdogTimer = null;
+    function armWatchdog() {
+      clearTimeout(watchdogTimer);
+      watchdogTimer = setTimeout(function () {
+        const known = Object.keys(feedData).some(function (k) {
+          return feedData[k] && feedData[k].stories && feedData[k].stories.length;
+        });
+        if (known) return;
+        const loading = document.querySelector('.loading-state');
+        if (!loading || loading.style.display === 'none') return;
+        els.errorDetail.textContent =
+          'No route returned stories. Open the widget console for the per-route reason.';
+        showState('error-state');
+      }, 60000);
+    }
+
+    async function loadFeeds(force) {
+      if (fetchInFlight) return;
+      const feeds = configuredFeeds();
+      if (!feeds.length) { showState('setup-state'); return; }
+      fetchInFlight = true;
+      armWatchdog();
+
+      try {
+        await Promise.all(feeds.map(async function (f) {
+          const prev = feedData[f.index];
+          if (!force && prev && prev.stories && prev.stories.length &&
+              prev.fetchedAt && (Date.now() - prev.fetchedAt) < refreshMs()) return;
+          try {
+            const parsed = await fetchViaRoutes(f.url);
+            const title = f.label || parsed.feedTitle || hostLabel(f.url);
+            parsed.stories.forEach(function (s) {
+              // A label the user typed beats the title the feed reports, in the
+              // per-story source line as well as the header.
+              if (f.label || !s.feedTitle) s.feedTitle = title;
+              s.author = tidyByline(s.author, title);
+            });
+            feedData[f.index] = {
+              feedTitle: title,
+              via: parsed.via,
+              problems: parsed.problems || [],
+              fetchedAt: Date.now(),
+              stories: parsed.stories,
+              error: ''
+            };
+            if (parsed.problems && parsed.problems.length) {
+              console.warn('RSS Reader — ' + f.url + ' served by ' + parsed.via +
+                '; skipped: ' + parsed.problems.join(' | '));
+            }
+          } catch (err) {
+            const message = 'Every route failed — ' + (err && err.message ? err.message : 'unknown error');
+            if (prev && prev.stories && prev.stories.length) {
+              prev.error = message;   // keep showing the cached stories
+            } else {
+              feedData[f.index] = { feedTitle: f.label || hostLabel(f.url), stories: [], fetchedAt: 0, error: message };
+            }
+            console.warn('RSS Reader — ' + f.url + ': ' + message);
+          }
+        }));
+        saveCache();
+      } finally {
+        fetchInFlight = false;
+        clearTimeout(watchdogTimer);
+        renderAll();
+      }
+    }
+
+    function scheduleRefresh() {
+      clearInterval(refreshTimer);
+      refreshTimer = setInterval(function () { loadFeeds(true); }, refreshMs());
+      scheduleRotation();
+    }
+
+    // Feed Mode "Rotate": hand the panel to the next feed on a fixed 15-minute
+    // beat. Stories keep their own Refresh Interval — this only moves the view.
+    function scheduleRotation() {
+      clearInterval(rotateTimer);
+      rotateTimer = null;
+      if (!rotateMode()) return;
+      rotateTimer = setInterval(advanceFeed, ROTATE_MS);
+    }
+
+    function advanceFeed() {
+      const feeds = configuredFeeds();
+      if (feeds.length < 2) return;
+      // Never yank the panel out from under someone reading a story or holding
+      // the feed switcher open — take the next beat instead.
+      if (detailOpen || filterOpen) return;
+      activeFeed = (Math.min(activeFeed, feeds.length - 1) + 1) % feeds.length;
+      renderAll();
+    }
+
+    function configKey() {
+      return JSON.stringify({
+        feeds: configuredFeeds(),
+        max: maxStories(),
+        mode: feedMode(),
+        thumbs: thumbsOn(),
+        proxy: proxyTemplate(),
+        title: propString('widgetTitle', ''),
+        refresh: refreshMs()
+      });
+    }
+
+    function onIcueDataUpdated() {
+      applyStyles();
+      const key = configKey();
+      if (key !== lastConfigKey) {
+        const feedsChanged = lastConfigKey &&
+          JSON.parse(key).feeds.map(function (f) { return f.url; }).join(',') !==
+          JSON.parse(lastConfigKey).feeds.map(function (f) { return f.url; }).join(',');
+        lastConfigKey = key;
+        if (feedsChanged) { feedData = {}; activeFeed = 0; }
+        scheduleRefresh();
+        loadFeeds(true);
+        return;
+      }
+      renderAll();
+    }
+
+    let hasBooted = false;
+    function onIcueInitialized() {
+      // iCUE can call this as well as our own boot poll — make the second call a
+      // no-op boot that still re-reads settings.
+      if (hasBooted) { onIcueDataUpdated(); return; }
+      hasBooted = true;
+      applyStyles();
+      lastConfigKey = configKey();
+      if (loadCache()) renderAll(); else showState('loading-state');
+      scheduleRefresh();
+      loadFeeds(false);
+    }
+
+    function onUpdateRequested() {
+      applyStyles();
+      renderAll();
+    }
+
+    window.addEventListener('resize', function () { if (!detailOpen) renderAll(); });
+
+    // Boot. iCUE injects `iCUE_initialized` on its own schedule, so one
+    // synchronous read can be a false negative even when we really are running
+    // inside iCUE. Poll across a short grace window before concluding this is a
+    // plain browser preview, and re-assert the handlers each tick in case iCUE's
+    // bootstrap landed after this script did.
+    const BOOT_RETRY_MS = 100;
+    const BOOT_RETRY_MAX = 20;          // ~2s grace window
+    let bootAttempts = 0;
+    function bootCheck() {
+      wireIcueEvents();
+      if (typeof iCUE_initialized !== 'undefined' && iCUE_initialized) {
+        onIcueInitialized();
+        return;
+      }
+      if (bootAttempts < BOOT_RETRY_MAX) {
+        bootAttempts++;
+        setTimeout(bootCheck, BOOT_RETRY_MS);
+        return;
+      }
+      onIcueInitialized();              // genuine standalone preview
+    }
+    bootCheck();
+  })();
+  </script>
+</body>
+</html>

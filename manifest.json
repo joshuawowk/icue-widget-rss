@@ -1,0 +1,27 @@
+{
+  "author": "Josh Wowk",
+  "id": "net.jwowk.icue.rss",
+  "name": "RSS Reader",
+  "description": "Glanceable multi-feed RSS/Atom reader for Xeneon Edge — My Day style dark theme with thumbnails, source chips, and relative timestamps. Resilient multi-route fetching works with feeds that block browser CORS (Hackaday, most WordPress blogs, local BLOX/TownNews newspapers), including an optional relay you host yourself. Name a feed with \"Label|https://…\". Interactive: tap the header to switch feeds, tap a story for the full summary, tap Open to launch it in your browser.",
+  "version": "1.3.3",
+  "preview_icon": "resources/icon.png",
+  "min_framework_version": "1.0.0",
+  "min_app_version": "5.44",
+  "os": [
+    {
+      "platform": "windows"
+    }
+  ],
+  "supported_devices": [
+    {
+      "type": "dashboard_lcd",
+      "features": [
+        "sensor-screen"
+      ]
+    }
+  ],
+  "interactive": true,
+  "required_plugins": [
+    "widgetbuilder.linkprovider:Url:1.0"
+  ]
+}

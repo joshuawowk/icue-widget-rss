@@ -1,0 +1,16 @@
+{
+  "name": "icue-widget-rss",
+  "version": "1.3.3",
+  "private": true,
+  "description": "RSS Reader widget for the CORSAIR Xeneon Edge",
+  "scripts": {
+    "test": "node tools/icue-test.js",
+    "test:live": "node tools/icue-test.js --live",
+    "test:selftest": "node tools/harness-selftest.js",
+    "validate": "icuewidget validate .",
+    "package": "node tools/package.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}
