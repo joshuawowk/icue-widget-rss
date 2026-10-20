@@ -33,9 +33,12 @@ const SHOTS = arg('shots', path.join(WIDGET_DIR, 'tools', 'shots'));
 const KEEP = argv.includes('--keep');
 const LIVE = argv.includes('--live');   // hit the real network instead of tools/fixtures
 
-// Self-hosted CORS relay (t630) + a paper that needs it. Override with
-// RELAY_ORIGIN=... when the relay moves.
-const RELAY_ORIGIN = process.env.RELAY_ORIGIN || 'http://192.168.0.164:8787';
+// Self-hosted CORS relay + a paper that needs it. The default is a placeholder: the
+// widget only accepts a plain-http proxy on a private address (10.x, 172.16-31.x,
+// 192.168.x, 127.x), so it must stay in one of those ranges. The offline tests stub the
+// relay, so any such address works; set RELAY_ORIGIN to your own relay for --live runs,
+// e.g. RELAY_ORIGIN=http://<your-host>:8787 npm run test:live
+const RELAY_ORIGIN = (process.env.RELAY_ORIGIN || 'http://10.0.0.10:8787').replace(/\/+$/, '');
 const BLOX_FEED = 'https://www.valleybreeze.com/search/?f=rss&t=article' +
   '&c=news/north_smithfield_and_blackstone&l=15&s=start_time&sd=desc';
 
@@ -492,7 +495,7 @@ async function main() {
     const dctx = await browser.newContext({ viewport: { width: 840, height: 344 } });
     const dpage = await dctx.newPage();
     await installNetwork(dpage);
-    await dpage.route('**/192.168.0.164:8787/**', r => r.abort('failed'));   // relay down
+    await dpage.route(RELAY_ORIGIN + '/**', r => r.abort('failed'));   // relay down
     await dpage.goto(url, { waitUntil: 'domcontentloaded' });
     await dpage.waitForSelector('.story-row', { timeout: 45000 }).catch(() => {});
     await dpage.evaluate((cfg) => window.__icue.setData(cfg), {
