@@ -1,6 +1,6 @@
 {
   "name": "icue-widget-rss",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "private": true,
   "description": "RSS Reader widget for the CORSAIR Xeneon Edge",
   "scripts": {
