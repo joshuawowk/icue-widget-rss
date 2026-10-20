@@ -1,0 +1,9 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="gallery.css">
+<div class="head">
+  <h2>A chain of routes, <span class="accent">first story wins</span></h2>
+  <p class="sub">Most feeds send no CORS headers, so the widget tries each route in order.</p>
+</div>
+<div class="flow"><div class="box"><div class="n">1</div>Direct fetch<small>Feeds that send CORS headers</small></div><div class="link"><div class="line"></div></div><div class="box"><div class="n">2</div>WordPress.com REST API<small>Covers many blogs, honours Max Stories</small></div><div class="link"><div class="line"></div></div><div class="box"><div class="n">3</div>Your own relay<small>Optional, self-hosted</small></div><div class="link"><div class="line"></div></div><div class="box"><div class="n">4</div>Public bridges<small>rss2json, allorigins, feedrapp, codetabs</small></div></div>
+<div class="steps"><div class="step"><div class="num">1</div><b>Import</b><br>Open the .icuewidget file, or use Widgets, then + in iCUE.</div><div class="step"><div class="num">2</div><b>Add feeds</b><br>Enter up to five https feed URLs in the widget settings.</div><div class="step"><div class="num">3</div><b>Optional relay</b><br>Set Custom Proxy URL to use your own relay and skip public bridges.</div></div>
+<div class="note"><b>Network permission:</b> any host, because feeds can live anywhere. When a feed blocks direct access, its URL is sent to the WordPress.com API or to the public bridges unless you set your own relay. Requires iCUE 5.52 or later.</div>
+<div class="foot"><span>Independent widget. Sample headlines are from a public feed; author names are hidden. MIT.</span><span>Windows, iCUE 5.52+, Xeneon Edge</span></div>
