@@ -1,5 +1,8 @@
 # RSS Reader — iCUE Widget for Xeneon Edge
 
+[![Release](https://img.shields.io/github/v/release/joshuawowk/icue-widget-rss)](https://github.com/joshuawowk/icue-widget-rss/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/joshuawowk/icue-widget-rss)](LICENSE)
+
 A glanceable, **My Day**-style RSS/Atom reader for the CORSAIR Xeneon Edge. Dark theme, article thumbnails, relative-time chips, and per-feed tabs — designed to sit alongside [ClickUp Tasks](https://github.com/joshuawowk/icue-widget-clickup) and share its design language.
 
 ![preview](resources/preview.png)
@@ -42,16 +45,29 @@ The widget understands RSS 2.0, Atom, RDF, and the JSON shapes each bridge retur
 - **Responsive**: all Xeneon Edge slot sizes — S/M/L/XL, horizontal (multi-column on L/XL) and vertical
 - **Personalization**: text/accent/background colors, background image with glass blur, transparency
 
-## Installation
+## Install
 
-### With the iCUE Widget CLI
+**Prerequisites**
+
+- Windows PC with CORSAIR iCUE 5.52 or newer and a Xeneon Edge
+- Optional: a self-hosted CORS relay such as [cors-relay](https://github.com/joshuawowk/cors-relay) for feeds that block browser CORS (see [Custom proxy](#custom-proxy))
+
+**Steps**
+
+1. Download `RSS-Reader-<version>.icuewidget` from the [latest release](https://github.com/joshuawowk/icue-widget-rss/releases/latest).
+2. Double-click the file, or in iCUE open **Widgets**, click **+**, and select the file.
+3. Add the widget to a Xeneon Edge slot and enter your feeds in its settings.
+
+**Network permission.** Feeds can live on any host, so the manifest declares `{ "type": "url", "domain": "any" }` (the spec's wildcard for external hosts). iCUE shows it at install and you can revoke it in the widget settings. The wildcard does not cover `localhost` or a relay on your LAN; iCUE asks at runtime the first time the widget uses one, so click Allow.
+
+### Build from source
 
 ```
-icuewidget validate icue-widget-rss
-icuewidget package icue-widget-rss
+npm install -g icuewidget-cli
+npm run package
 ```
 
-Double-click the produced `.icuewidget` file to install into iCUE (5.44+).
+This validates the widget and writes `dist/RSS-Reader-<version>.icuewidget`; double-click it to install.
 
 ### Manual (development)
 
